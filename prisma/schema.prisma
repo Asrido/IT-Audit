@@ -1,0 +1,166 @@
+// This is a placeholder for Prisma schema. 
+// In a real environment, you'd run `npx prisma init`
+// But I will create the schema file directly.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  role          String    @default("AUDITEE") // SUPER_ADMIN, AUDITOR, AUDITEE, REVIEWER
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  projectsAsAuditor AuditProject[] @relation("AuditorRelation")
+  projectsAsAuditee AuditProject[] @relation("AuditeeRelation")
+  auditLogs         AuditLog[]
+  findings          Finding[]      @relation("FindingAuditor")
+  actionPlans       ActionPlan[]   @relation("ActionPlanPIC")
+}
+
+model AuditStandard {
+  id          String   @id @default(cuid())
+  name        String   // e.g., COBIT 2019, ISO 27001:2022
+  version     String
+  description String?
+  domains     Domain[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Domain {
+  id              String        @id @default(cuid())
+  name            String
+  code            String        // e.g., EDM, APO, BAI, DSS, MEA
+  standardId      String
+  standard        AuditStandard @relation(fields: [standardId], references: [id])
+  controls        Control[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model Control {
+  id              String        @id @default(cuid())
+  code            String        // e.g., DSS01.01
+  name            String
+  description     String?
+  domainId        String
+  domain          Domain        @relation(fields: [domainId], references: [id])
+  checklists      AuditChecklist[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model AuditProject {
+  id            String      @id @default(cuid())
+  title         String
+  description   String?
+  scope         String?
+  startDate     DateTime
+  endDate       DateTime
+  status        String      @default("PLANNED") // PLANNED, IN_PROGRESS, REVIEW, COMPLETED, CANCELLED
+  
+  auditorId     String
+  auditor       User        @relation("AuditorRelation", fields: [auditorId], references: [id])
+  
+  auditeeId     String
+  auditee       User        @relation("AuditeeRelation", fields: [auditeeId], references: [id])
+  
+  checklists    AuditChecklist[]
+  findings      Finding[]
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model AuditChecklist {
+  id            String        @id @default(cuid())
+  projectId     String
+  project       AuditProject  @relation(fields: [projectId], references: [id])
+  controlId     String
+  control       Control       @relation(fields: [controlId], references: [id])
+  
+  status        String        @default("NOT_APPLICABLE") // COMPLIANT, NON_COMPLIANT, PARTIAL, NOT_APPLICABLE
+  evidence      String?       // URL or description of evidence
+  notes         String?
+  score         Int?          // 0-100
+  
+  auditorSign   String?       // Digital signature or name
+  signedAt      DateTime?
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Finding {
+  id              String        @id @default(cuid())
+  projectId       String
+  project         AuditProject  @relation(fields: [projectId], references: [id])
+  findingNumber   String        @unique // Auto-generated e.g., F-2024-001
+  title           String
+  
+  condition       String
+  criteria        String
+  cause           String
+  impact          String
+  recommendation  String
+  severity        String        @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  
+  auditorId       String
+  auditor         User          @relation("FindingAuditor", fields: [auditorId], references: [id])
+  
+  actionPlans     ActionPlan[]
+  
+  createdAt       DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model ActionPlan {
+  id              String        @id @default(cuid())
+  findingId       String
+  finding         Finding       @relation(fields: [findingId], references: [id])
+  
+  description     String
+  picId           String
+  pic             User          @relation("ActionPlanPIC", fields: [picId], references: [id])
+  targetDate      DateTime
+  status          String        @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, CLOSED, OVERDUE
+  progress        Int           @default(0) // 0-100
+  
+  comments        Comment[]
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model Comment {
+  id              String      @id @default(cuid())
+  actionPlanId    String
+  actionPlan      ActionPlan  @relation(fields: [actionPlanId], references: [id])
+  userId          String
+  content         String
+  createdAt       DateTime    @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  action      String   // e.g., LOGIN, CREATE_PROJECT, UPDATE_FINDING
+  entity      String?  // e.g., AuditProject, Finding
+  entityId    String?
+  details     String?  // JSON string of changes
+  ipAddress   String?
+  timestamp   DateTime @default(now())
+}
+
